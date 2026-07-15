@@ -107,7 +107,9 @@ def add_list(message):
     if not is_admin(message.from_user.id):
         return
     cid = str(message.chat.id)
-    text = message.text[len("/addlist "):].strip()
+    text = message.text.split("\n", 1)[-1].strip()
+    if text == "/addlist":
+        text = ""
     if not text and message.reply_to_message:
         text = message.reply_to_message.text or message.reply_to_message.caption or ""
     if not text:
