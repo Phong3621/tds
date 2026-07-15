@@ -172,15 +172,33 @@ def list_accounts(message):
 def force_check(message):
     if not is_admin(message.from_user.id):
         return
-    bot.reply_to(message, "\u23F3 Checking all accounts...")
-    results = check_all()
-    if results:
-        for cid, alerts in results.items():
-            for alert in alerts:
-                try:
-                    bot.send_message(cid, alert, parse_mode="Markdown")
-                except:
-                    pass
+    msg = bot.reply_to(message, "\u23F3 \u0110ang check...")
+    with accounts_lock:
+        if not accounts_data:
+            bot.edit_message_text("\u274c Ch\u01b0a c\xf3 acc n\xe0o. D\xf9ng /addlist th\xeam v\xe0o.", msg.chat.id, msg.message_id)
+            return
+    def run():
+        bot.edit_message_text("\u23F3 \u0110ang check... (c\xf3 th\u1ec3 m\u1ea5t 5-10s/acc)", msg.chat.id, msg.message_id)
+        results = check_all()
+        lines = []
+        with accounts_lock:
+            for cid2, accs2 in accounts_data.items():
+                for u, info in accs2.items():
+                    xu = info.get("last_xu", "?")
+                    lines.append(f"\U0001F464 {u} - {xu} xu")
+        alert_count = sum(len(v) for v in results.values())
+        report = "\u2705 *Check ho\xe0n t\u1ea5t*\n" + "\n".join(lines)
+        if alert_count:
+            report += f"\n\n\u26A0 *{alert_count} c\u1ea3nh b\xe1o!*"
+        bot.edit_message_text(report, msg.chat.id, msg.message_id, parse_mode="Markdown")
+        if results:
+            for cid2, alerts in results.items():
+                for alert in alerts:
+                    try:
+                        bot.send_message(cid2, alert, parse_mode="Markdown")
+                    except:
+                        pass
+    threading.Thread(target=run, daemon=True).start()
 
 @bot.message_handler(commands=["interval"])
 def set_interval(message):
