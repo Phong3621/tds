@@ -1,0 +1,9 @@
+services:
+  - type: worker
+    name: tds-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python tds_bot.py
+    envVars:
+      - key: TDS_BOT_TOKEN
+        value: 8446383056:AAHQAuUHXbC2AUPEHAg3AtB54rmeLm75O6Q
