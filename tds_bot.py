@@ -245,4 +245,10 @@ if __name__ == "__main__":
     threading.Thread(target=run_http, daemon=True).start()
     threading.Thread(target=periodic_check, daemon=True).start()
     logging.info("Bot started")
-    bot.infinity_polling()
+    while True:
+        try:
+            bot.remove_webhook()
+            bot.infinity_polling(skip_pending=True, allowed_updates=["message"])
+        except Exception as e:
+            logging.error(f"Polling error: {e}")
+            time.sleep(10)
