@@ -10,10 +10,10 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 TOKEN = os.getenv("TDS_BOT_TOKEN", "8446383056:AAHQAuUHXbC2AUPEHAg3AtB54rmeLm75O6Q")
-DATA_FILE = os.path.join(os.path.dirname(__file__), "tds_accounts.json")
 CHECK_INTERVAL = 300
 ADMIN_ID = 7640756072
 PORT = int(os.getenv("PORT", 10000))
+accounts_data = {}
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -34,24 +34,17 @@ accounts_lock = threading.Lock()
 def is_admin(uid):
     return uid == ADMIN_ID
 
-def load_accounts():
-    if not os.path.exists(DATA_FILE):
-        return {}
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
-
-def save_accounts(accounts):
-    with open(DATA_FILE, "w") as f:
-        json.dump(accounts, f, indent=2)
-
 def login_tds(username, password):
     sess = requests.Session()
     sess.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
-    r = sess.post("https://traodoisub.com/scr/login.php", data={"username": username, "password": password})
-    data = r.json()
-    if data.get("success"):
-        r2 = sess.get("https://traodoisub.com/scr/user.php")
-        return sess, r2.json()
+    try:
+        r = sess.post("https://traodoisub.com/scr/login.php", data={"username": username, "password": password}, timeout=15)
+        data = r.json()
+        if data.get("success"):
+            r2 = sess.get("https://traodoisub.com/scr/user.php", timeout=15)
+            return sess, r2.json()
+    except Exception:
+        pass
     return None, None
 
 def check_balance(username, password):
@@ -66,11 +59,9 @@ def add_single(cid, user, pwd):
     if err:
         return f"\u274c `{user}`: login failed"
     with accounts_lock:
-        accs = load_accounts()
-        if cid not in accs:
-            accs[cid] = {}
-        accs[cid][user] = {"password": pwd, "last_xu": xu}
-        save_accounts(accs)
+        if cid not in accounts_data:
+            accounts_data[cid] = {}
+        accounts_data[cid][user] = {"password": pwd, "last_xu": xu}
     return f"\u2705 `{user}` - {xu} xu"
 
 @bot.message_handler(commands=["start", "help"])
@@ -152,16 +143,14 @@ def del_account(message):
     to_del = [u.strip() for u in raw.replace("|", " ").split()]
     results = []
     with accounts_lock:
-        accs = load_accounts()
         for user in to_del:
-            if cid in accs and user in accs[cid]:
-                del accs[cid][user]
-                if not accs[cid]:
-                    del accs[cid]
+            if cid in accounts_data and user in accounts_data[cid]:
+                del accounts_data[cid][user]
+                if not accounts_data[cid]:
+                    del accounts_data[cid]
                 results.append(f"\u2705 Removed `{user}`")
             else:
                 results.append(f"\u274c `{user}` not found")
-        save_accounts(accs)
     bot.reply_to(message, "\n".join(results), parse_mode="Markdown")
 
 @bot.message_handler(commands=["list"])
@@ -170,12 +159,11 @@ def list_accounts(message):
         return
     cid = str(message.chat.id)
     with accounts_lock:
-        accs = load_accounts()
-        if cid not in accs or not accs[cid]:
+        if cid not in accounts_data or not accounts_data[cid]:
             bot.reply_to(message, "No accounts tracked. Use /add to add one.")
             return
         lines = [f"*Your tracked accounts:*"]
-        for user, info in accs[cid].items():
+        for user, info in accounts_data[cid].items():
             xu = info.get("last_xu", "?")
             lines.append(f"\U0001F464 `{user}` - {xu} xu")
         bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
@@ -215,21 +203,20 @@ def set_interval(message):
 
 def check_all():
     with accounts_lock:
-        accs = load_accounts()
+        accs = {k: dict(v) for k, v in accounts_data.items()}
     results = {}
     for cid, accounts in accs.items():
         for user, info in accounts.items():
             pwd = info["password"]
             last_xu = info.get("last_xu", 0)
             xu, err = check_balance(user, pwd)
+            time.sleep(5)
             if err:
                 logging.warning(f"Check failed for {user}: {err}")
                 continue
             with accounts_lock:
-                cur = load_accounts()
-                if cid in cur and user in cur[cid]:
-                    cur[cid][user]["last_xu"] = xu
-                    save_accounts(cur)
+                if cid in accounts_data and user in accounts_data[cid]:
+                    accounts_data[cid][user]["last_xu"] = xu
             if xu < last_xu:
                 drop = last_xu - xu
                 alert = (
