@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import logging
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
@@ -12,6 +13,20 @@ TOKEN = os.getenv("TDS_BOT_TOKEN", "8446383056:AAHQAuUHXbC2AUPEHAg3AtB54rmeLm75O
 DATA_FILE = os.path.join(os.path.dirname(__file__), "tds_accounts.json")
 CHECK_INTERVAL = 300
 ADMIN_ID = 7640756072
+PORT = int(os.getenv("PORT", 10000))
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, *a):
+        pass
+
+def run_http():
+    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
+    logging.info(f"HTTP server on port {PORT}")
+    server.serve_forever()
 
 bot = telebot.TeleBot(TOKEN)
 accounts_lock = threading.Lock()
@@ -240,7 +255,7 @@ def periodic_check():
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
-    t = threading.Thread(target=periodic_check, daemon=True)
-    t.start()
+    threading.Thread(target=run_http, daemon=True).start()
+    threading.Thread(target=periodic_check, daemon=True).start()
     logging.info("Bot started")
     bot.infinity_polling()
